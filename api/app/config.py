@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +19,9 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
     ]
 
+    # Vite dist directory for same-origin UI (Docker/Fly). Empty = auto /app/static.
+    static_dir: str = ""
+
     # Live routing (optional — static GTA table when key missing)
     here_api_key: str = ""
     routing_enabled: bool = True
@@ -33,6 +38,16 @@ class Settings(BaseSettings):
     @property
     def llm_enabled(self) -> bool:
         return bool(self.openai_api_key.strip())
+
+    @property
+    def resolved_static_dir(self) -> Path | None:
+        if self.static_dir.strip():
+            path = Path(self.static_dir.strip())
+        else:
+            path = Path(__file__).resolve().parent.parent / "static"
+        if path.is_dir() and (path / "index.html").is_file():
+            return path
+        return None
 
 
 settings = Settings()

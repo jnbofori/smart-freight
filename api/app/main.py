@@ -9,6 +9,7 @@ from app.database import Base, SessionLocal, engine
 from app.db_migrate import ensure_schema
 from app.routers import drivers, optimize, orders, trucks
 from app.seed import seed_all
+from app.spa import mount_spa
 
 
 @asynccontextmanager
@@ -51,3 +52,9 @@ app.include_router(optimize.router)
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+# Same-origin UI when STATIC_DIR (or ./static) contains a Vite build.
+_static = settings.resolved_static_dir
+if _static is not None:
+    mount_spa(app, _static)
