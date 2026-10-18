@@ -17,7 +17,32 @@ def ensure_schema(engine: Engine) -> None:
         if truck_cols and "max_interior_height_in" not in truck_cols:
             conn.execute(
                 text(
-                    "ALTER TABLE trucks ADD COLUMN max_interior_height_in INTEGER NOT NULL DEFAULT 110"
+                    "ALTER TABLE trucks ADD COLUMN max_interior_height_in INTEGER NOT NULL DEFAULT 84"
+                )
+            )
+        elif truck_cols and "max_interior_height_in" in truck_cols:
+            # Align legacy / prior defaults → trailer 108" / van 81" / truck 84"
+            conn.execute(
+                text(
+                    "UPDATE trucks SET max_interior_height_in = 108 "
+                    "WHERE (has_trailer = 1 OR trailer_size_class = 'ft53') "
+                    "AND max_interior_height_in IN (110, 90, 84)"
+                )
+            )
+            conn.execute(
+                text(
+                    "UPDATE trucks SET max_interior_height_in = 81 "
+                    "WHERE vehicle_class = 'van' "
+                    "AND NOT (has_trailer = 1 OR trailer_size_class = 'ft53') "
+                    "AND max_interior_height_in IN (110, 90, 84)"
+                )
+            )
+            conn.execute(
+                text(
+                    "UPDATE trucks SET max_interior_height_in = 84 "
+                    "WHERE vehicle_class != 'van' "
+                    "AND NOT (has_trailer = 1 OR trailer_size_class = 'ft53') "
+                    "AND max_interior_height_in IN (110, 90)"
                 )
             )
         if truck_cols and "current_address" not in truck_cols:
@@ -79,6 +104,20 @@ def ensure_schema(engine: Engine) -> None:
         if not driver_cols:
             return
 
+        if "hos_cycle" not in driver_cols:
+            conn.execute(
+                text(
+                    "ALTER TABLE drivers ADD COLUMN hos_cycle VARCHAR(32) "
+                    "NOT NULL DEFAULT 'cycle_70_7'"
+                )
+            )
+        if "hos_exempt" not in driver_cols:
+            conn.execute(
+                text(
+                    "ALTER TABLE drivers ADD COLUMN hos_exempt BOOLEAN NOT NULL DEFAULT 0"
+                )
+            )
+
         # Rename / backfill default_truck_id → truck_id (required, unique 1:1)
         if "truck_id" not in driver_cols:
             conn.execute(text("ALTER TABLE drivers ADD COLUMN truck_id INTEGER"))
@@ -122,3 +161,11 @@ def ensure_schema(engine: Engine) -> None:
                 )
             except Exception:
                 pass
+
+        # hos_status_logs is created by metadata.create_all; ensure columns exist if table present
+        hos_cols = _existing_columns(engine, "hos_status_logs")
+        if hos_cols:
+            if "note" not in hos_cols:
+                conn.execute(
+                    text("ALTER TABLE hos_status_logs ADD COLUMN note VARCHAR(255)")
+                )

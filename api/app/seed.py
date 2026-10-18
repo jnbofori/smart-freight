@@ -1,4 +1,7 @@
+import json
+import os
 from datetime import datetime, time
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
@@ -13,13 +16,47 @@ from app.enums import (
     TruckStatus,
     VehicleClass,
 )
-from app.models import Driver, Order, Truck, User
+from app.models import Driver, HosStatusLog, Order, Truck, User
 from app.services.capacity import resolve_truck_capacity
 from app.services.travel import TORONTO, utc_now_naive_fallback
 
 DEMO_EMAIL = "dispatcher@transontario.ca"
 DEMO_PASSWORD = "changeme"
 DEMO_FULL_NAME = "Demo Dispatcher"
+
+# Elite extract: real driver names + stop addresses only (not full fleet rebuild)
+ELITE_SEED_PATH = Path(__file__).resolve().parent / "data" / "elite_seed.json"
+
+
+def _load_elite() -> dict:
+    if not ELITE_SEED_PATH.exists():
+        return {"depot": {}, "drivers": [], "addresses": []}
+    return json.loads(ELITE_SEED_PATH.read_text(encoding="utf-8"))
+
+
+def _elite_driver_name(code: str, fallback: str) -> str:
+    for d in _load_elite().get("drivers", []):
+        if str(d.get("code")) == str(code):
+            return d.get("name") or fallback
+    return fallback
+
+
+def _elite_addr(ordno: str) -> dict | None:
+    for a in _load_elite().get("addresses", []):
+        if str(a.get("ordno")) == str(ordno):
+            return a
+    return None
+
+
+def clear_fleet_data(db: Session) -> None:
+    try:
+        db.query(HosStatusLog).delete()
+    except Exception:
+        db.rollback()
+    db.query(Order).delete()
+    db.query(Driver).delete()
+    db.query(Truck).delete()
+    db.commit()
 
 
 def _day_dt(hour: int, minute: int = 0) -> datetime:
@@ -114,84 +151,85 @@ def seed_drivers(db: Session) -> None:
     if db.query(Truck).count() == 0:
         return
     pairs = _pair_truck_ids(db)
+    depot_city = (_load_elite().get("depot") or {}).get("city") or "Scarborough"
     drivers = [
         Driver(
             code="113",
-            name="Sivasubramaniam Thayaparan",
+            name=_elite_driver_name("113", "Sivasubramaniam Thayaparan"),
             status=DriverStatus.AVAILABLE.value,
             licence_class=LicenceClass.AZ.value,
             can_dangerous_goods=True,
             can_heated=True,
             can_liftgate_runs=True,
             shift_start_min=6 * 60,
-            shift_end_min=18 * 60,
-            home_terminal_city="Scarborough",
+            shift_end_min=20 * 60,
+            home_terminal_city=depot_city,
             truck_id=pairs["113"],
         ),
         Driver(
             code="202",
-            name="Alex Chen",
+            name=_elite_driver_name("202", "Ilionick Fervius"),
             status=DriverStatus.AVAILABLE.value,
             licence_class=LicenceClass.DZ.value,
             can_dangerous_goods=False,
             can_heated=False,
             can_liftgate_runs=True,
-            shift_start_min=7 * 60,
-            shift_end_min=17 * 60,
-            home_terminal_city="Mississauga",
+            shift_start_min=6 * 60,
+            shift_end_min=20 * 60,
+            home_terminal_city=depot_city,
             truck_id=pairs["202"],
         ),
         Driver(
             code="227",
-            name="Jordan Patel",
+            name=_elite_driver_name("227", "Najibullah Raufi"),
             status=DriverStatus.AVAILABLE.value,
             licence_class=LicenceClass.AZ.value,
             can_dangerous_goods=True,
             can_heated=False,
             can_liftgate_runs=False,
-            shift_start_min=5 * 60 + 30,
-            shift_end_min=17 * 60 + 30,
-            home_terminal_city="Brampton",
+            shift_start_min=6 * 60,
+            shift_end_min=20 * 60,
+            home_terminal_city=depot_city,
             truck_id=pairs["227"],
         ),
         Driver(
             code="120",
-            name="Sam Rivera",
+            name=_elite_driver_name("120", "Thambirasa Asokkumar"),
             status=DriverStatus.AVAILABLE.value,
             licence_class=LicenceClass.G.value,
             can_dangerous_goods=False,
             can_heated=False,
             can_liftgate_runs=True,
-            shift_start_min=8 * 60,
-            shift_end_min=16 * 60,
+            shift_start_min=6 * 60,
+            shift_end_min=20 * 60,
             max_duty_hours=10,
-            home_terminal_city="Markham",
+            home_terminal_city=depot_city,
             truck_id=pairs["120"],
         ),
         Driver(
             code="205",
-            name="Taylor Ng",
+            name=_elite_driver_name("205", "Tariq Karwa"),
             status=DriverStatus.AVAILABLE.value,
             licence_class=LicenceClass.DZ.value,
             can_dangerous_goods=False,
             can_heated=True,
             can_liftgate_runs=False,
             shift_start_min=6 * 60,
-            shift_end_min=18 * 60,
-            home_terminal_city="Toronto",
+            shift_end_min=20 * 60,
+            home_terminal_city=depot_city,
             truck_id=pairs["205"],
         ),
         Driver(
             code="231",
-            name="Morgan Lee",
+            name=_elite_driver_name("231", "Dimitrios Prepos"),
             status=DriverStatus.AVAILABLE.value,
             licence_class=LicenceClass.AZ.value,
             can_dangerous_goods=True,
             can_heated=True,
             can_liftgate_runs=True,
             shift_start_min=6 * 60,
-            shift_end_min=19 * 60,
-            home_terminal_city="Concord",
+            shift_end_min=20 * 60,
+            home_terminal_city=depot_city,
             truck_id=pairs["231"],
         ),
     ]
@@ -203,12 +241,17 @@ def seed_fleet_and_orders(db: Session) -> None:
     if db.query(Truck).count() > 0 or db.query(Order).count() > 0:
         return
 
+    elite = _load_elite()
+    depot = elite.get("depot") or {}
+    depot_city = depot.get("city") or "Scarborough"
+    depot_address = depot.get("address") or f"2215 Markham Rd, {depot_city}, ON"
+
     trucks = [
         _truck(
             "Truck #202",
             VehicleClass.TRUCK,
             3,
-            "Scarborough",
+            depot_city,
             has_liftgate=True,
             has_dock_height=True,
         ),
@@ -216,7 +259,7 @@ def seed_fleet_and_orders(db: Session) -> None:
             "Truck #213",
             VehicleClass.TRUCK,
             2,
-            "Mississauga",
+            depot_city,
             has_liftgate=False,
             has_dock_height=True,
         ),
@@ -224,7 +267,7 @@ def seed_fleet_and_orders(db: Session) -> None:
             "Truck #227",
             VehicleClass.TRACTOR,
             5,
-            "Brampton",
+            depot_city,
             has_trailer=True,
             trailer_unit="Trailer #530129",
             trailer_size_class=TrailerSizeClass.FT53,
@@ -235,7 +278,7 @@ def seed_fleet_and_orders(db: Session) -> None:
             "Truck #231",
             VehicleClass.TRACTOR,
             5,
-            "Concord",
+            depot_city,
             has_trailer=True,
             trailer_unit="Trailer #530935",
             trailer_size_class=TrailerSizeClass.FT53,
@@ -246,7 +289,7 @@ def seed_fleet_and_orders(db: Session) -> None:
             "Truck #120",
             VehicleClass.VAN,
             2,
-            "Markham",
+            depot_city,
             has_liftgate=True,
             has_dock_height=False,
         ),
@@ -254,36 +297,59 @@ def seed_fleet_and_orders(db: Session) -> None:
             "Truck #205",
             VehicleClass.TRUCK,
             3,
-            "Toronto",
+            depot_city,
             has_liftgate=False,
             has_dock_height=True,
             heated=True,
         ),
     ]
+    for t in trucks:
+        t.current_address = depot_address
     db.add_all(trucks)
     db.flush()
 
-    # Street addresses for routing / map (city kept for corridor + UI)
+    # Fallback street stubs if Elite address missing for an ordno
     _ADDR = {
-        "Markham": "180 Enterprise Blvd",
-        "Scarborough": "300 Borough Dr",
-        "Toronto": "100 Queen St W",
-        "Mississauga": "100 City Centre Dr",
-        "Brampton": "2 Wellington St W",
+        "Markham": "90 Royal Crest Ct",
+        "Scarborough": "2215 Markham Rd",
+        "Toronto": "401 Norfinch Dr",
+        "Mississauga": "1600 Aimco Blvd",
+        "Brampton": "9200 Airport Rd",
         "Pickering": "1550 Kingston Rd",
         "London": "300 Dufferin Ave",
-        "Windsor": "350 City Hall Square W",
+        "Windsor": "650 Division Road",
         "Woodbridge": "7600 Weston Rd",
+        "Vaughan": "865 Gibraltor Rd",
         "Concord": "200 Bradwick Dr",
-        "Hamilton": "71 Main St W",
+        "Hamilton": "86 Main Street",
         "Milton": "150 Mary St",
         "Barrie": "70 Collier St",
         "Richmond Hill": "225 East Beaver Creek Rd",
-        "Newmarket": "395 Mulock Dr",
-        "Guelph": "1 Carden St",
+        "Newmarket": "195 Harry Walker Pkwy N",
+        "Guelph": "935 Southgate Drive",
+        "Bolton": "12724 Coleraine Drive",
+        "Burlington": "3315 Fairview St",
+        "Kitchener": "4396 King Street",
+        "Dundas": "86 Main Street",
     }
 
-    def _pair(o_city: str, d_city: str, o_street: str | None = None, d_street: str | None = None):
+    def _pair(
+        ordno: str,
+        o_city: str,
+        d_city: str,
+        o_street: str | None = None,
+        d_street: str | None = None,
+    ):
+        elite_a = _elite_addr(ordno)
+        if elite_a:
+            return {
+                "origin_city": elite_a.get("origin_city") or o_city,
+                "destination_city": elite_a.get("destination_city") or d_city,
+                "origin_address": elite_a.get("origin_address")
+                or f"{o_street or _ADDR.get(o_city, '1 Main St')}, {o_city}, ON",
+                "destination_address": elite_a.get("destination_address")
+                or f"{d_street or _ADDR.get(d_city, '1 Main St')}, {d_city}, ON",
+            }
         o_st = o_street or _ADDR.get(o_city, "1 Main St")
         d_st = d_street or _ADDR.get(d_city, "1 Main St")
         return {
@@ -297,7 +363,7 @@ def seed_fleet_and_orders(db: Session) -> None:
         Order(
             ordno="2986297",
             reference="GTA-LTL-001",
-            **_pair("Markham", "Scarborough"),
+            **_pair("2986297", "Markham", "Scarborough"),
             weight_lbs=850,
             skid_spots=2,
             linear_feet=4,
@@ -313,7 +379,7 @@ def seed_fleet_and_orders(db: Session) -> None:
         Order(
             ordno="2986405",
             reference="GTA-RUSH-002",
-            **_pair("Scarborough", "Toronto"),
+            **_pair("2986405", "Scarborough", "Toronto"),
             weight_lbs=120,
             skid_spots=0,
             linear_feet=1,
@@ -330,7 +396,7 @@ def seed_fleet_and_orders(db: Session) -> None:
         Order(
             ordno="2987105",
             reference="GTA-OVN-003",
-            **_pair("Mississauga", "Brampton"),
+            **_pair("2987105", "Mississauga", "Brampton"),
             weight_lbs=3200,
             skid_spots=4,
             linear_feet=8,
@@ -348,7 +414,7 @@ def seed_fleet_and_orders(db: Session) -> None:
         Order(
             ordno="2987417",
             reference="GTA-LTL-004",
-            **_pair("Scarborough", "Pickering"),
+            **_pair("2987417", "Scarborough", "Pickering"),
             weight_lbs=500,
             skid_spots=1,
             linear_feet=2,
@@ -363,7 +429,7 @@ def seed_fleet_and_orders(db: Session) -> None:
         Order(
             ordno="2987877",
             reference="GTA-OOT-005",
-            **_pair("Pickering", "London"),
+            **_pair("2987877", "Pickering", "London"),
             weight_lbs=12_500,
             skid_spots=10,
             linear_feet=20,
@@ -377,13 +443,13 @@ def seed_fleet_and_orders(db: Session) -> None:
         Order(
             ordno="2988001",
             reference="GTA-FTL-006",
-            **_pair("Brampton", "Windsor"),
+            **_pair("2988001", "Brampton", "Windsor"),
             weight_lbs=28_000,
             skid_spots=18,
             linear_feet=40,
             pieces=22,
             stackable=False,
-            height_in=96,
+            height_in=80,
             service=OrderService.FTL.value,
             equipment_required=EquipmentRequired.TRAILER_53.value,
             status=OrderStatus.UNASSIGNED.value,
@@ -391,7 +457,7 @@ def seed_fleet_and_orders(db: Session) -> None:
         Order(
             ordno="2988102",
             reference="GTA-INS-007",
-            **_pair("Toronto", "Toronto", d_street="250 Yonge St"),
+            **_pair("2988102", "Toronto", "Toronto", d_street="250 Yonge St"),
             weight_lbs=400,
             skid_spots=1,
             linear_feet=2,
@@ -407,7 +473,7 @@ def seed_fleet_and_orders(db: Session) -> None:
         Order(
             ordno="2988203",
             reference="GTA-LTL-008",
-            **_pair("Woodbridge", "Concord"),
+            **_pair("2988203", "Woodbridge", "Concord"),
             weight_lbs=2100,
             skid_spots=3,
             linear_feet=6,
@@ -421,7 +487,7 @@ def seed_fleet_and_orders(db: Session) -> None:
         Order(
             ordno="2988304",
             reference="GTA-DG-009",
-            **_pair("Mississauga", "Hamilton"),
+            **_pair("2988304", "Mississauga", "Hamilton"),
             weight_lbs=1800,
             skid_spots=2,
             linear_feet=5,
@@ -436,7 +502,7 @@ def seed_fleet_and_orders(db: Session) -> None:
         Order(
             ordno="2988405",
             reference="GTA-HEAT-010",
-            **_pair("Milton", "Barrie"),
+            **_pair("2988405", "Milton", "Barrie"),
             weight_lbs=900,
             skid_spots=2,
             linear_feet=3,
@@ -451,7 +517,7 @@ def seed_fleet_and_orders(db: Session) -> None:
         Order(
             ordno="2988506",
             reference="GTA-LTL-011",
-            **_pair("Richmond Hill", "Markham"),
+            **_pair("2988506", "Richmond Hill", "Markham"),
             weight_lbs=650,
             skid_spots=1,
             linear_feet=2,
@@ -465,7 +531,7 @@ def seed_fleet_and_orders(db: Session) -> None:
         Order(
             ordno="2988607",
             reference="GTA-HARD-012",
-            **_pair("Scarborough", "Newmarket"),
+            **_pair("2988607", "Scarborough", "Newmarket"),
             weight_lbs=2200,
             skid_spots=3,
             linear_feet=6,
@@ -482,7 +548,7 @@ def seed_fleet_and_orders(db: Session) -> None:
         Order(
             ordno="2988708",
             reference="GTA-OVER-013",
-            **_pair("Brampton", "Guelph"),
+            **_pair("2988708", "Brampton", "Guelph"),
             weight_lbs=8_000,
             skid_spots=12,
             linear_feet=30,
@@ -497,7 +563,7 @@ def seed_fleet_and_orders(db: Session) -> None:
         Order(
             ordno="2988809",
             reference="GTA-HARD-014",
-            **_pair("Toronto", "Mississauga"),
+            **_pair("2988809", "Toronto", "Mississauga"),
             weight_lbs=700,
             skid_spots=1,
             linear_feet=2,
@@ -510,26 +576,11 @@ def seed_fleet_and_orders(db: Session) -> None:
             heated=True,
             status=OrderStatus.UNASSIGNED.value,
         ),
-        # Intentionally hard: too tall for any seeded truck (max 110")
-        Order(
-            ordno="2988910",
-            reference="GTA-TALL-015",
-            **_pair("Mississauga", "Brampton"),
-            weight_lbs=1500,
-            skid_spots=2,
-            linear_feet=4,
-            pieces=2,
-            stackable=False,
-            height_in=120,
-            service=OrderService.LTL.value,
-            equipment_required=EquipmentRequired.TRUCK.value,
-            status=OrderStatus.UNASSIGNED.value,
-        ),
         # Stackable companion (same footprint as 2987417) for stacking demos
         Order(
             ordno="2988911",
             reference="GTA-STACK-016",
-            **_pair("Scarborough", "Pickering"),
+            **_pair("2988911", "Scarborough", "Pickering"),
             weight_lbs=450,
             skid_spots=1,
             linear_feet=2,
@@ -544,7 +595,7 @@ def seed_fleet_and_orders(db: Session) -> None:
         Order(
             ordno="2988912",
             reference="GTA-APPT-017",
-            **_pair("Toronto", "Hamilton"),
+            **_pair("2988912", "Toronto", "Hamilton"),
             weight_lbs=900,
             skid_spots=2,
             linear_feet=4,
@@ -601,7 +652,10 @@ def seed_driver_truck_pairs(db: Session) -> None:
     db.commit()
 
 
+
 def seed_all(db: Session) -> None:
+    if os.environ.get("SEED_FORCE", "").strip() in {"1", "true", "True", "yes"}:
+        clear_fleet_data(db)
     seed_demo_user(db)
     seed_fleet_and_orders(db)
     seed_drivers(db)

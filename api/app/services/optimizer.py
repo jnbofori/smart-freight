@@ -27,6 +27,7 @@ from app.schemas import (
 )
 from app.services.geocode import corridor_affinity
 from app.services.travel import (
+    after_shift_end,
     effective_window_end_min,
     effective_window_start_min,
     service_minutes,
@@ -432,7 +433,7 @@ def _simulate_time(
             return None, msg
         soft_miss_note = f", soft window miss (due≤{due_end})"
 
-    if depart > driver.shift_end_min:
+    if after_shift_end(depart, driver.shift_start_min, driver.shift_end_min):
         return None, (
             f"driver hours exceeded "
             f"(depart {depart:.0f} after shift end {driver.shift_end_min})"
@@ -754,6 +755,7 @@ def _build_load_for_sequence(
     origin_place = start_place or _depot_place(truck, driver)
     load = _TruckLoad(
         truck=truck,
+        driver=driver,
         current_place=origin_place,
         current_time_min=float(start_time_min if start_time_min is not None else 0.0),
         truck_at_start=bool(start_place),
@@ -1110,7 +1112,9 @@ def optimize_assignments(
         "Toronto",
     )
 
-    available_trucks = [t for t in trucks if t.status != TruckStatus.OUT_OF_SERVICE.value]
+    available_trucks = [
+        t for t in trucks if t.status != TruckStatus.OUT_OF_SERVICE.value
+    ]
     pool = [
         d
         for d in drivers

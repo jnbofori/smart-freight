@@ -49,8 +49,10 @@ def _rebuild_remaining(
     if not remaining:
         return None
 
+    from app.enums import MID_SHIFT_CLOCK_MIN
+
     start = truck_current_place(truck, driver)
-    start_time = 12 * 60.0
+    start_time = float(MID_SHIFT_CLOCK_MIN)
     pickup_ids: set[int] = set()
     depot = _depot_place(truck, driver)
 

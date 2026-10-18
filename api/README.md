@@ -6,7 +6,7 @@ Features in this slice:
 
 - Cookie-based auth (login / logout / me)
 - CRUD for **trucks**, **drivers**, and **orders** (Elite/Samsara-aligned fields)
-- Heuristic **truck loading + routing** (`POST /optimize`): corridor-aware assignment with travel-aware insertion scoring, per-truck 2-opt stop reorder, capacity/stack/HOS/windows checks. Each driver has a required unique `truck_id`. Live ETAs via HERE + Open-Meteo when configured.
+- Heuristic **truck loading + routing** (`POST /optimize`): corridor-aware assignment with travel-aware insertion scoring, per-truck 2-opt stop reorder, capacity/stack/duty-drive/windows checks. Each driver has a required unique `truck_id`. Live ETAs via HERE + Open-Meteo when configured.
 
 ## Setup
 
@@ -32,7 +32,7 @@ Seeded on first startup:
 - **Email:** `dispatcher@transontario.ca`
 - **Password:** `changeme`
 
-Also seeds ~6 GTA trucks, ~6 drivers (each with required `truck_id`, e.g. driver `202` → `Truck #202`), and ~14 sample orders (including delivery windows and one infeasible early appointment) when those tables are empty.
+Also seeds ~6 GTA trucks, ~6 drivers (sticky `truck_id`), and ~16 sample orders. Driver **names** and order **street addresses** come from Elite extracts in [`app/data/elite_seed.json`](app/data/elite_seed.json) (depot **2215 Markham Rd, Scarborough**). Drivers default to a **06:00–20:00** shift (14h window); depot ready is **06:00**; daily duty/drive caps default to **~13h**.
 
 ## Elite field mapping
 
@@ -53,7 +53,7 @@ Also seeds ~6 GTA trucks, ~6 drivers (each with required `truck_id`, e.g. driver
 
 - Axles → max weight: van 2-axle ~10k lb; straight truck 2–3 axle ~26–33k; tractor 3–5 axle ~45–80k
 - Straight truck ~10 skid spots / 24 ft; 53' trailer ~26 spots / 53 ft
-- Interior height defaults: van ~90 in; straight / 53' ~110 in
+- Interior height defaults: trailers 108 in; trucks 84 in; cargo vans 81 in (typical high-roof work van)
 - Liftgate required when order has liftgate, residential, or inside delivery
 - `trailer_53` equipment requires tractor + 53' trailer
 
@@ -76,12 +76,12 @@ Also seeds ~6 GTA trucks, ~6 drivers (each with required `truck_id`, e.g. driver
 - Travel: static GTA city-pair minutes (`app/services/travel.py`), else 45 min; 15 min service per stop — or **HERE** live ETAs when `HERE_API_KEY` is set
 - Weather pad via **Open-Meteo** (no key) on live legs
 - **Driver.truck_id** (required, unique): each driver is permanently tied to one truck; optimize always uses that driver for that truck
-- **Heuristic:** corridor grouping + travel-aware insertion scoring + per-truck 2-opt reorder; validates capacity / stack / quals / HOS / windows
+- **Heuristic:** corridor grouping + travel-aware insertion scoring + per-truck 2-opt reorder; validates capacity / stack / quals / duty-drive / windows
 - Load is **LIFO** (first stop at door); overflow prefers same-direction trucks
 - Response includes `routing_mode` (`static`|`live`), `route` stops/ETAs, `weather_summary`
-- Not in scope: map tiles, multi-day HOS, pickup-leg split, OR-Tools VRP, LLM routing
+- Not in scope: map tiles, weekly HOS ledger, pickup-leg split, OR-Tools VRP, LLM routing
 
-To pick up new seed data (drivers / windows / truck pairs / stack demos), delete `smart_freight.db` and restart the API so seed re-runs.
+To pick up new seed data (driver names / addresses / trucks / shift times), delete `smart_freight.db` and restart the API, or run with `SEED_FORCE=1`.
 
 ## Auth
 

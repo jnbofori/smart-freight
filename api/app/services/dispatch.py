@@ -24,6 +24,7 @@ from app.services.optimizer import (
     _origin_place,
     _truck_delivery_compatible,
 )
+from app.enums import MID_SHIFT_CLOCK_MIN
 from app.services.simulate import truck_current_place
 from app.services.travel import utc_now_naive_fallback
 from app.services.travel_provider import TravelProvider
@@ -122,7 +123,7 @@ def _rebuild_assignment(
     driver hours, and capacity reject infeasible sequences.
     """
     start = truck_current_place(truck, driver)
-    start_time = 12 * 60.0  # mid-day demo clock
+    start_time = float(MID_SHIFT_CLOCK_MIN)  # mid-shift demo clock (noon)
     pickup_ids = {new_order.id}
     pool = [new_order, *remaining]
 
@@ -188,6 +189,29 @@ def dispatch_order(
     trucks = db.query(Truck).all()
     drivers = db.query(Driver).all()
     all_orders = db.query(Order).all()
+    return _dispatch_order_body(
+        db,
+        order,
+        travel=travel,
+        day=day,
+        trucks=trucks,
+        drivers=drivers,
+        all_orders=all_orders,
+        persist=persist,
+    )
+
+
+def _dispatch_order_body(
+    db: Session,
+    order: Order,
+    *,
+    travel: TravelProvider,
+    day,
+    trucks: list[Truck],
+    drivers: list[Driver],
+    all_orders: list[Order],
+    persist: bool,
+) -> DispatchResponse:
     pickup = _origin_place(order)
 
     rejects: list[DispatchReject] = []

@@ -632,7 +632,7 @@ async function submitPickup() {
       <div class="flex flex-wrap gap-2">
         <el-button :loading="loading" :disabled="busy" @click="run(false)">Dry run</el-button>
         <el-button type="primary" :loading="loading" :disabled="busy" @click="run(true)">
-          Run &amp; persist
+          Run &amp; save
         </el-button>
         <el-button
           type="warning"

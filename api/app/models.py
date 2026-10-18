@@ -8,6 +8,8 @@ from app.database import Base
 from app.enums import (
     DriverStatus,
     EquipmentRequired,
+    HosCycle,
+    HosDutyStatus,
     LicenceClass,
     OrderService,
     OrderStatus,
@@ -47,9 +49,13 @@ class Driver(Base):
     can_heated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     can_liftgate_runs: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     shift_start_min: Mapped[int] = mapped_column(Integer, nullable=False, default=6 * 60)
-    shift_end_min: Mapped[int] = mapped_column(Integer, nullable=False, default=18 * 60)
+    shift_end_min: Mapped[int] = mapped_column(Integer, nullable=False, default=20 * 60)
     max_duty_hours: Mapped[float] = mapped_column(Float, nullable=False, default=13.0)
     max_drive_hours: Mapped[float] = mapped_column(Float, nullable=False, default=13.0)
+    hos_cycle: Mapped[str] = mapped_column(
+        String(32), nullable=False, default=HosCycle.CYCLE_70_7.value
+    )
+    hos_exempt: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     home_terminal_city: Mapped[str] = mapped_column(String(128), nullable=False, default="")
     truck_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("trucks.id"), nullable=False, unique=True
@@ -64,6 +70,28 @@ class Driver(Base):
     truck: Mapped["Truck"] = relationship(
         "Truck", back_populates="drivers", foreign_keys=[truck_id]
     )
+    hos_logs: Mapped[list["HosStatusLog"]] = relationship(
+        "HosStatusLog", back_populates="driver", cascade="all, delete-orphan"
+    )
+
+
+class HosStatusLog(Base):
+    """Duty-status segment for Ontario HOS prototype (O. Reg. 555/06–inspired)."""
+
+    __tablename__ = "hos_status_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    driver_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("drivers.id"), nullable=False, index=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default=HosDutyStatus.OFF_DUTY.value
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    note: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    driver: Mapped["Driver"] = relationship("Driver", back_populates="hos_logs")
 
 
 class Truck(Base):
@@ -78,7 +106,7 @@ class Truck(Base):
     max_weight_lbs: Mapped[int] = mapped_column(Integer, nullable=False)
     max_skid_spots: Mapped[int] = mapped_column(Integer, nullable=False)
     max_linear_feet: Mapped[int] = mapped_column(Integer, nullable=False)
-    max_interior_height_in: Mapped[int] = mapped_column(Integer, nullable=False, default=110)
+    max_interior_height_in: Mapped[int] = mapped_column(Integer, nullable=False, default=84)
     has_trailer: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     trailer_unit: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     trailer_size_class: Mapped[str] = mapped_column(

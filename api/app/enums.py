@@ -61,7 +61,35 @@ class LicenceClass(str, enum.Enum):
 
 SERVICE_TIME_MIN = 15
 DEFAULT_TRAVEL_MIN = 45
+# Operational morning start
 DEPOT_READY_MIN = 6 * 60  # 06:00
+PRE_TRIP_INSPECTION_MIN = 15
+# Mid-shift demo clock for dispatch / breakdown / cancel rebuilds
+MID_SHIFT_CLOCK_MIN = 12 * 60  # 12:00
+
+
+class HosDutyStatus(str, enum.Enum):
+    OFF_DUTY = "off_duty"
+    SLEEPER = "sleeper"
+    DRIVING = "driving"
+    ON_DUTY_NOT_DRIVING = "on_duty_not_driving"
+
+
+class HosCycle(str, enum.Enum):
+    CYCLE_70_7 = "cycle_70_7"
+    CYCLE_120_14 = "cycle_120_14"
+
+
+# O. Reg. 555/06–inspired hard caps (prototype; not legal advice)
+HOS_MAX_DRIVE_MIN = 13 * 60
+HOS_MAX_ON_DUTY_MIN = 14 * 60
+HOS_MAX_ELAPSED_MIN = 16 * 60
+HOS_MIN_OFF_DUTY_DAY_MIN = 10 * 60
+HOS_QUALIFYING_REST_MIN = 8 * 60
+HOS_CYCLE_70_7_MIN = 70 * 60
+HOS_CYCLE_120_14_MIN = 120 * 60
+HOS_CYCLE_120_RESET_24_MIN = 24 * 60
+HOS_CYCLE_120_RESET_72_MIN = 72 * 60
 
 
 # Prototype axle → max weight (lb). Not full CVOR law — documented assumptions.
@@ -114,10 +142,14 @@ def default_interior_height_in(
     has_trailer: bool,
     trailer_size_class: str,
 ) -> int:
-    if vehicle_class == VehicleClass.VAN.value:
-        return 90
+    """Prototype interior clear heights (inches).
+
+    Trailers ~108 in; straight trucks ~84 in; cargo vans ~81 in
+    (typical high-roof work van, e.g. Ford Transit high roof ~81.5 in;
+    Sprinter/ProMaster high roofs are ~76–81 in).
+    """
     if has_trailer or trailer_size_class == TrailerSizeClass.FT53.value:
-        return 110
-    if vehicle_class == VehicleClass.TRACTOR.value:
-        return 90
-    return 110
+        return 108
+    if vehicle_class == VehicleClass.VAN.value:
+        return 81
+    return 84

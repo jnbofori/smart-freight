@@ -26,7 +26,7 @@ const emptyForm = (): DriverPayload => ({
   can_heated: false,
   can_liftgate_runs: true,
   shift_start_min: 6 * 60,
-  shift_end_min: 18 * 60,
+  shift_end_min: 20 * 60,
   max_duty_hours: 13,
   max_drive_hours: 13,
   home_terminal_city: '',
@@ -144,6 +144,7 @@ onMounted(load)
           </template>
         </el-table-column>
         <el-table-column prop="max_duty_hours" label="Max duty h" width="100" />
+        <el-table-column prop="max_drive_hours" label="Max drive h" width="110" />
         <el-table-column label="Quals" min-width="180">
           <template #default="{ row }">
             <div class="flex flex-wrap gap-1">

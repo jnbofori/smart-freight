@@ -41,7 +41,7 @@ class DriverBase(BaseModel):
     can_heated: bool = False
     can_liftgate_runs: bool = True
     shift_start_min: int = Field(default=6 * 60, ge=0, le=24 * 60)
-    shift_end_min: int = Field(default=18 * 60, ge=0, le=24 * 60)
+    shift_end_min: int = Field(default=20 * 60, ge=0, le=24 * 60)
     max_duty_hours: float = Field(default=13.0, gt=0, le=24)
     max_drive_hours: float = Field(default=13.0, gt=0, le=24)
     home_terminal_city: str = ""
@@ -341,7 +341,7 @@ class TruckAssignment(BaseModel):
     placements: list[LoadPlacement] = []
     max_skid_spots: float = 0
     max_linear_feet: float = 0
-    max_interior_height_in: int = 110
+    max_interior_height_in: int = 84
     route: Optional[AssignmentRoute] = None
 
 

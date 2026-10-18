@@ -190,7 +190,7 @@ const SIDE_PAD_T = 24
 const SIDE_PAD_B = 28
 
 const sideLayout = computed(() => {
-  const maxH = Math.max(props.assignment.max_interior_height_in || 110, 1)
+  const maxH = Math.max(props.assignment.max_interior_height_in || 84, 1)
   const maxFt = Math.max(props.assignment.max_linear_feet || 1, 1)
   const deckLengthIn = maxFt * 12
 

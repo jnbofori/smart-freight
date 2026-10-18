@@ -137,7 +137,9 @@ def _rebuild_rescue_tour(
     pool = list(transfer) + [o for o in rescue_remaining if o.id not in {t.id for t in transfer}]
     # Empty pickup set → dest-only for every stop
     pickup_ids: set[int] = set()
-    start_time = 12 * 60.0
+    from app.enums import MID_SHIFT_CLOCK_MIN
+
+    start_time = float(MID_SHIFT_CLOCK_MIN)
     stub = _TruckLoad(
         truck=rescue,
         driver=driver,

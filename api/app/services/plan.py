@@ -17,6 +17,7 @@ from app.schemas import (
     TruckAssignment,
     UnassignedOrder,
 )
+from app.enums import MID_SHIFT_CLOCK_MIN
 from app.services.optimizer import (
     _build_assignment,
     _build_load_for_sequence,
@@ -81,7 +82,7 @@ def _fallback_assignment(
 
     stops: list[RouteStop] = []
     prev = origin
-    eta = 12 * 60.0 if start_place else 0.0
+    eta = float(MID_SHIFT_CLOCK_MIN) if start_place else 0.0
     total_distance = 0.0
     for i, order in enumerate(orders):
         dest = _dest_place(order)
@@ -131,7 +132,9 @@ def _fallback_assignment(
         driver_name=driver.name if driver else None,
         driver_code=driver.code if driver else None,
         truck_status=truck.status,
-        duty_minutes_used=max(0.0, eta - (12 * 60.0 if start_place else 0.0)),
+        duty_minutes_used=max(
+            0.0, eta - (float(MID_SHIFT_CLOCK_MIN) if start_place else 0.0)
+        ),
         order_ids=[o.id for o in orders],
         order_ordnos=[o.ordno for o in orders],
         destinations=sorted({_dest_place(o) for o in orders}),
@@ -151,7 +154,9 @@ def _fallback_assignment(
         route=AssignmentRoute(
             stops=stops,
             total_distance_m=total_distance,
-            total_drive_min=max(0.0, eta - (12 * 60.0 if start_place else 0.0)),
+            total_drive_min=max(
+                0.0, eta - (float(MID_SHIFT_CLOCK_MIN) if start_place else 0.0)
+            ),
             corridor="unknown",
             path=path,
             depot_lat=depot_lat,
@@ -199,7 +204,7 @@ def load_persisted_plan(db: Session) -> OptimizeResponse:
         home = _depot_place(truck, driver)
         midday = _is_midday(truck, home)
         start_place = truck_current_place(truck, driver) if midday else None
-        start_time = 12 * 60.0 if midday else None
+        start_time = float(MID_SHIFT_CLOCK_MIN) if midday else None
         # Remaining freight is already aboard after simulate/dispatch/breakdown.
         pickup_ids: set[int] | None = set() if midday else None
         depot = home

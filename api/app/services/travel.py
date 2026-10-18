@@ -96,7 +96,10 @@ def effective_window_end_min(
     if svc == OrderService.EXPEDITE.value:
         return 14 * 60, True
 
-    # Open until driver shift end (soft)
+    # Open until driver shift end (soft). Overnight shifts (end before depot ready)
+    # use absolute end past midnight so evening ETAs are not soft-missed.
+    if driver_shift_end_min <= DEPOT_READY_MIN:
+        return 24 * 60 + driver_shift_end_min, False
     return driver_shift_end_min, False
 
 
@@ -114,3 +117,16 @@ def effective_window_start_min(
 
 def utc_now_naive_fallback() -> date:
     return datetime.now(tz=TORONTO).date()
+
+
+def shift_end_absolute(shift_start_min: int, shift_end_min: int) -> int:
+    """Absolute minute-of-timeline end (may exceed 24*60 for overnight shifts)."""
+    if shift_end_min > shift_start_min:
+        return shift_end_min
+    return 24 * 60 + shift_end_min
+
+
+def after_shift_end(
+    clock_min: float, shift_start_min: int, shift_end_min: int
+) -> bool:
+    return float(clock_min) > float(shift_end_absolute(shift_start_min, shift_end_min))
