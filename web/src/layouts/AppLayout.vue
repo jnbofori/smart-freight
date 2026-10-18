@@ -20,18 +20,24 @@ async function onLogout() {
 
 <template>
   <div class="flex min-h-full">
-    <aside class="flex w-56 flex-col border-r border-slate-200 bg-slate-900 text-slate-100">
-      <div class="border-b border-slate-700 px-4 py-5">
-        <div class="text-xs uppercase tracking-wider text-slate-400">Trans Ontario</div>
-        <div class="text-lg font-semibold">Smart Freight</div>
+    <aside class="flex w-56 flex-col border-r border-white/10 bg-[#030718] text-[#F2F2F2]">
+      <div class="border-b border-white/10 px-3 py-4">
+        <img
+          src="/trans-ontario-logo.png"
+          alt="Trans Ontario Express"
+          class="h-auto w-full"
+        />
+        <div class="mt-2 text-center text-[11px] font-medium tracking-wide text-[#F2F2F2]/70">
+          Smart Freight
+        </div>
       </div>
       <el-menu
         :default-active="active"
         router
-        background-color="#0f172a"
-        text-color="#e2e8f0"
-        active-text-color="#ffffff"
-        class="border-0!"
+        background-color="#030718"
+        text-color="#F2F2F2"
+        active-text-color="#FFFFFF"
+        class="border-0! [&_.el-menu-item.is-active]:bg-[#1F4AEE]/25"
       >
         <el-menu-item index="/optimize">Optimize</el-menu-item>
         <el-menu-item index="/trucks">Trucks</el-menu-item>

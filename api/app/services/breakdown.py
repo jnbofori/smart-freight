@@ -20,6 +20,7 @@ from app.services.dispatch import (
     _lost_to_winner_reason,
     _remaining_on_truck,
 )
+from app.services.plan_history import record_plan_history
 from app.services.optimizer import (
     _TruckLoad,
     _build_assignment,
@@ -503,6 +504,17 @@ def approve_breakdown(
         winner.current_address = breakdown_place
         winner.current_lat = broken.current_lat
         winner.current_lng = broken.current_lng
+        record_plan_history(
+            db,
+            "breakdown",
+            (
+                f"Rescue {winner.unit_number} took {len(transfer)} order(s) "
+                f"from {broken.unit_number}"
+            ),
+            assignments=[assignment] if assignment is not None else None,
+            truck_ids={winner.id, broken.id},
+            commit=False,
+        )
         db.commit()
 
     return BreakdownApproveResponse(

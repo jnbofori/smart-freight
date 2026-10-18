@@ -5,12 +5,26 @@ import type {
   DispatchResponse,
   DriverAbsenceResponse,
   OptimizeResponse,
+  RouteHistoryListResponse,
   SimulateResponse,
 } from '@/types'
 import { api } from './client'
 
 export async function getOptimizePlan(): Promise<OptimizeResponse> {
   const { data } = await api.get<OptimizeResponse>('/optimize')
+  return data
+}
+
+export async function getRouteHistory(params: {
+  truckId?: number
+  unitNumber?: string
+}): Promise<RouteHistoryListResponse> {
+  const { data } = await api.get<RouteHistoryListResponse>('/optimize/history', {
+    params: {
+      ...(params.truckId != null ? { truck_id: params.truckId } : {}),
+      ...(params.unitNumber ? { unit_number: params.unitNumber } : {}),
+    },
+  })
   return data
 }
 

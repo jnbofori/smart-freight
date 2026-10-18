@@ -61,6 +61,12 @@ def ensure_schema(engine: Engine) -> None:
             conn.execute(text("ALTER TABLE trucks ADD COLUMN current_lat FLOAT"))
         if truck_cols and "current_lng" not in truck_cols:
             conn.execute(text("ALTER TABLE trucks ADD COLUMN current_lng FLOAT"))
+        if truck_cols and "reasoning_summary" not in truck_cols:
+            conn.execute(
+                text(
+                    "ALTER TABLE trucks ADD COLUMN reasoning_summary TEXT NOT NULL DEFAULT ''"
+                )
+            )
 
         order_cols = _existing_columns(engine, "orders")
         if order_cols and "stackable" not in order_cols:

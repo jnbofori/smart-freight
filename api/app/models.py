@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -123,6 +123,8 @@ class Truck(Base):
     status: Mapped[str] = mapped_column(
         String(32), nullable=False, default=TruckStatus.AVAILABLE.value
     )
+    # Last persisted LLM / fallback assignment briefing for this truck
+    reasoning_summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -135,6 +137,33 @@ class Truck(Base):
         back_populates="truck",
         foreign_keys="Driver.truck_id",
     )
+
+
+class PlanMeta(Base):
+    """Singleton-ish row for plan-level fields not stored on trucks/orders."""
+
+    __tablename__ = "plan_meta"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    unassigned_summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+
+class RouteHistoryEntry(Base):
+    """Append-only compact snapshots of one truck's route over time."""
+
+    __tablename__ = "route_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    note: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    truck_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    unit_number: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    snapshot_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
 
 
 class Order(Base):

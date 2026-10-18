@@ -18,6 +18,7 @@ from app.services.optimizer import (
     _enrich_load_map_path,
     _optimize_stop_order,
 )
+from app.services.plan_history import record_plan_history
 from app.services.simulate import truck_current_place
 from app.services.travel import utc_now_naive_fallback
 from app.services.travel_provider import TravelProvider
@@ -192,6 +193,14 @@ def cancel_order(
             }:
                 driver.status = DriverStatus.AVAILABLE.value
 
+        record_plan_history(
+            db,
+            "cancel",
+            f"Cancelled {ordno} on {unit}",
+            assignments=[assignment] if assignment is not None else None,
+            truck_ids={truck_id},
+            commit=False,
+        )
         db.commit()
 
     if not remaining:

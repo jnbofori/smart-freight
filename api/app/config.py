@@ -21,9 +21,18 @@ class Settings(BaseSettings):
     here_api_key: str = ""
     routing_enabled: bool = True
 
+    # LLM summaries for optimize rationale (optional)
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
+    openai_base_url: str = "https://api.openai.com/v1"
+
     @property
     def here_live(self) -> bool:
         return bool(self.routing_enabled and self.here_api_key.strip())
+
+    @property
+    def llm_enabled(self) -> bool:
+        return bool(self.openai_api_key.strip())
 
 
 settings = Settings()

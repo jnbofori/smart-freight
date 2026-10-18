@@ -7,7 +7,7 @@ from collections import defaultdict
 from sqlalchemy.orm import Session
 
 from app.enums import OrderStatus
-from app.models import Driver, Order, Truck
+from app.models import Driver, Order, PlanMeta, Truck
 from app.schemas import (
     AssignmentRoute,
     CapacityUsage,
@@ -147,6 +147,7 @@ def _fallback_assignment(
             remaining_linear_feet=float(truck.max_linear_feet) - used_f,
         ),
         rationales=["Restored from persisted plan"],
+        reasoning_summary=(truck.reasoning_summary or "").strip(),
         placements=[],
         max_skid_spots=float(truck.max_skid_spots),
         max_linear_feet=float(truck.max_linear_feet),
@@ -242,23 +243,27 @@ def load_persisted_plan(db: Session) -> OptimizeResponse:
                     )
 
         if load is not None:
-            assignments.append(_build_assignment(load))
+            assignment = _build_assignment(load)
         else:
-            assignments.append(
-                _fallback_assignment(
-                    truck,
-                    driver,
-                    orders,
-                    travel,
-                    start_place=start_place,
-                    pickup_order_ids=pickup_ids,
-                )
+            assignment = _fallback_assignment(
+                truck,
+                driver,
+                orders,
+                travel,
+                start_place=start_place,
+                pickup_order_ids=pickup_ids,
             )
+        saved = (truck.reasoning_summary or "").strip()
+        if saved:
+            assignment.reasoning_summary = saved
+        assignments.append(assignment)
 
     unassigned = [
         UnassignedOrder(order_id=o.id, ordno=o.ordno, reason="unassigned")
         for o in sorted(unassigned_orders, key=lambda o: o.ordno)
     ]
+    meta = db.get(PlanMeta, 1)
+    unassigned_summary = (meta.unassigned_summary if meta else "") or ""
     assigned_count = sum(len(a.order_ids) for a in assignments)
     return OptimizeResponse(
         assignments=assignments,
@@ -273,4 +278,5 @@ def load_persisted_plan(db: Session) -> OptimizeResponse:
         planning_date=day,
         routing_mode=travel.mode,
         weather_summary=travel.weather_summary(),
+        unassigned_summary=unassigned_summary,
     )

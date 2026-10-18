@@ -25,6 +25,7 @@ from app.services.optimizer import (
     _truck_delivery_compatible,
 )
 from app.enums import MID_SHIFT_CLOCK_MIN
+from app.services.plan_history import record_plan_history
 from app.services.simulate import truck_current_place
 from app.services.travel import utc_now_naive_fallback
 from app.services.travel_provider import TravelProvider
@@ -335,6 +336,23 @@ def _dispatch_order_body(
             DriverStatus.OUT_OF_SERVICE.value,
         }:
             driver.status = DriverStatus.ASSIGNED.value
+        if assignment is not None:
+            record_plan_history(
+                db,
+                "dispatch",
+                f"Dispatched {order.ordno} → {winner.unit_number}",
+                assignments=[assignment],
+                truck_ids={winner.id},
+                commit=False,
+            )
+        else:
+            record_plan_history(
+                db,
+                "dispatch",
+                f"Dispatched {order.ordno} → {winner.unit_number}",
+                truck_ids={winner.id},
+                commit=False,
+            )
         db.commit()
         db.refresh(order)
 

@@ -212,6 +212,7 @@ export interface TruckAssignment {
   destinations: string[]
   usage: CapacityUsage
   rationales: string[]
+  reasoning_summary?: string
   placements: LoadPlacement[]
   max_skid_spots: number
   max_linear_feet: number
@@ -238,6 +239,42 @@ export interface OptimizeResponse {
   planning_date: string
   routing_mode: string
   weather_summary: string
+  unassigned_summary?: string
+}
+
+export interface RouteHistoryStop {
+  seq: number
+  ordno: string
+  destination: string
+  eta_min: number
+}
+
+export interface RouteHistorySnapshot {
+  truck_id: number
+  unit_number: string
+  driver_name: string
+  driver_code: string
+  order_ordnos: string[]
+  destinations: string[]
+  corridor: string
+  reasoning_summary: string
+  stops: RouteHistoryStop[]
+}
+
+export interface RouteHistoryEntry {
+  id: number
+  created_at: string
+  event_type: string
+  note: string
+  truck_id: number
+  unit_number: string
+  snapshot: RouteHistorySnapshot
+}
+
+export interface RouteHistoryListResponse {
+  truck_id: number | null
+  unit_number: string
+  entries: RouteHistoryEntry[]
 }
 
 export interface SimulatedTruck {

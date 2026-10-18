@@ -15,6 +15,7 @@ import type {
   DriverAbsenceResponse,
   OptimizeResponse,
   Order,
+  RouteHistoryEntry,
   SimulateResponse,
   TruckAssignment,
 } from '@/types'
@@ -56,6 +57,17 @@ const orderDialogOpen = ref(false)
 const orderDetail = ref<Order | null>(null)
 const orderDetailLoading = ref(false)
 const cancellingOrder = ref(false)
+const historyDialogOpen = ref(false)
+const historyLoading = ref(false)
+const historyEntries = ref<RouteHistoryEntry[]>([])
+const selectedHistoryId = ref<number | null>(null)
+const historyTruckLabel = ref('')
+
+const selectedHistoryEntry = computed(() => {
+  const id = selectedHistoryId.value
+  if (id == null) return null
+  return historyEntries.value.find((e) => e.id === id) ?? null
+})
 
 const breakdownCandidates = computed(() =>
   (result.value?.assignments ?? []).filter((a) => (a.route?.stops?.length ?? a.order_ids.length) > 0),
@@ -135,6 +147,57 @@ function clockLabel(mins: number): string {
 
 function isOutOfService(a: TruckAssignment): boolean {
   return a.truck_status === 'out_of_service'
+}
+
+function historyEventLabel(eventType: string): string {
+  switch (eventType) {
+    case 'optimize':
+      return 'Optimize'
+    case 'absence':
+      return 'Driver absence'
+    case 'dispatch':
+      return 'Dispatch'
+    case 'breakdown':
+      return 'Breakdown'
+    case 'cancel':
+      return 'Cancel'
+    default:
+      return eventType
+  }
+}
+
+function formatHistoryTime(value: string): string {
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(d)
+}
+
+function clockFromMin(mins: number): string {
+  if (!mins) return '—'
+  const total = Math.max(0, Math.round(mins))
+  const h = Math.floor(total / 60) % 24
+  const m = total % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+async function openRouteHistory(a: TruckAssignment) {
+  historyTruckLabel.value = a.unit_number
+  historyDialogOpen.value = true
+  historyLoading.value = true
+  historyEntries.value = []
+  selectedHistoryId.value = null
+  try {
+    const data = await optimizeApi.getRouteHistory({ truckId: a.truck_id })
+    historyEntries.value = data.entries
+    selectedHistoryId.value = data.entries[0]?.id ?? null
+  } catch (err) {
+    ElMessage.error(errorMessage(err))
+  } finally {
+    historyLoading.value = false
+  }
 }
 
 function formatOrderDate(value: string | null | undefined): string {
@@ -604,6 +667,7 @@ async function submitPickup() {
           planning_date: new Date().toISOString().slice(0, 10),
           routing_mode: 'static',
           weather_summary: '',
+          unassigned_summary: '',
         }
       }
       ElMessage.success(
@@ -929,9 +993,14 @@ async function submitPickup() {
                     </span>
                   </div>
                 </div>
-                <el-button type="primary" plain size="small" @click="openViz(a)">
-                  Visualize load
-                </el-button>
+                <div class="flex flex-wrap gap-2">
+                  <el-button type="primary" plain size="small" @click="openViz(a)">
+                    Visualize load
+                  </el-button>
+                  <el-button plain size="small" @click="openRouteHistory(a)">
+                    Route history
+                  </el-button>
+                </div>
               </div>
               <p v-if="isOutOfService(a)" class="mb-3 text-sm font-medium text-rose-800">
                 Truck is out of service at
@@ -996,13 +1065,126 @@ async function submitPickup() {
 
       <div class="rounded-lg bg-white p-4 shadow-sm">
         <h2 class="mb-3 text-base font-semibold">Unassigned</h2>
-        <el-table v-if="result.unassigned.length" :data="result.unassigned" stripe>
-          <el-table-column prop="ordno" label="Ordno" width="140" />
-          <el-table-column prop="reason" label="Reason" min-width="320" />
-        </el-table>
+        <p
+          v-if="result.unassigned_summary"
+          class="mb-3 text-sm leading-relaxed text-slate-600"
+        >
+          {{ result.unassigned_summary }}
+        </p>
+        <el-collapse v-if="result.unassigned.length">
+          <el-collapse-item name="unassigned-table">
+            <template #title>
+              <span class="text-sm font-medium text-slate-700">
+                Details ({{ result.unassigned.length }})
+              </span>
+            </template>
+            <el-table :data="result.unassigned" stripe>
+              <el-table-column prop="ordno" label="Ordno" width="140" />
+              <el-table-column prop="reason" label="Reason" min-width="320" />
+            </el-table>
+          </el-collapse-item>
+        </el-collapse>
         <p v-else class="text-sm text-emerald-700">All considered orders were assigned.</p>
       </div>
     </template>
+
+    <el-dialog
+      v-model="historyDialogOpen"
+      :title="historyTruckLabel ? `Route history · ${historyTruckLabel}` : 'Route history'"
+      width="920px"
+      top="5vh"
+      destroy-on-close
+    >
+      <div v-loading="historyLoading" class="min-h-[240px]">
+        <p v-if="!historyLoading && !historyEntries.length" class="text-sm text-slate-500">
+          No route changes recorded for this truck yet. Run &amp; save (or dispatch / breakdown /
+          cancel that touches this truck) to start its timeline.
+        </p>
+        <div v-else-if="historyEntries.length" class="grid gap-4 md:grid-cols-[280px_1fr]">
+          <div class="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
+            <button
+              v-for="entry in historyEntries"
+              :key="entry.id"
+              type="button"
+              class="w-full rounded-md border px-3 py-2 text-left text-sm transition"
+              :class="
+                selectedHistoryId === entry.id
+                  ? 'border-sky-400 bg-sky-50'
+                  : 'border-slate-200 bg-white hover:border-slate-300'
+              "
+              @click="selectedHistoryId = entry.id"
+            >
+              <div class="font-medium text-slate-800">{{ historyEventLabel(entry.event_type) }}</div>
+              <div class="text-xs text-slate-500">{{ formatHistoryTime(entry.created_at) }}</div>
+              <div class="mt-1 line-clamp-2 text-xs text-slate-600">{{ entry.note || '—' }}</div>
+              <div class="mt-1 text-xs text-slate-400">
+                {{ entry.snapshot.order_ordnos.length }} stop{{
+                  entry.snapshot.order_ordnos.length === 1 ? '' : 's'
+                }}
+              </div>
+            </button>
+          </div>
+          <div v-if="selectedHistoryEntry" class="max-h-[60vh] space-y-3 overflow-y-auto">
+            <div>
+              <h3 class="text-sm font-semibold text-slate-800">
+                {{ historyEventLabel(selectedHistoryEntry.event_type) }}
+              </h3>
+              <p class="text-xs text-slate-500">
+                {{ formatHistoryTime(selectedHistoryEntry.created_at) }}
+                <span v-if="selectedHistoryEntry.note"> · {{ selectedHistoryEntry.note }}</span>
+              </p>
+            </div>
+            <div class="rounded-md border border-slate-200 p-3">
+              <div class="text-sm font-medium text-slate-800">
+                {{ selectedHistoryEntry.snapshot.unit_number || historyTruckLabel }}
+                <span class="font-normal text-slate-500">
+                  · {{ selectedHistoryEntry.snapshot.driver_name || 'No driver' }}
+                  <template v-if="selectedHistoryEntry.snapshot.driver_code">
+                    ({{ selectedHistoryEntry.snapshot.driver_code }})
+                  </template>
+                  <template v-if="selectedHistoryEntry.snapshot.corridor">
+                    · {{ selectedHistoryEntry.snapshot.corridor }}
+                  </template>
+                </span>
+              </div>
+              <p class="mt-2 text-sm text-slate-500">
+                Orders:
+                {{ selectedHistoryEntry.snapshot.order_ordnos.join(', ') || 'none' }}
+              </p>
+              <table
+                v-if="selectedHistoryEntry.snapshot.stops.length"
+                class="mt-2 w-full text-left text-xs text-slate-600"
+              >
+                <thead>
+                  <tr class="text-slate-400">
+                    <th class="py-1 pr-2 font-medium">#</th>
+                    <th class="py-1 pr-2 font-medium">Ordno</th>
+                    <th class="py-1 pr-2 font-medium">Destination</th>
+                    <th class="py-1 font-medium">ETA</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="s in selectedHistoryEntry.snapshot.stops"
+                    :key="`${s.ordno}-${s.seq}`"
+                    class="border-t border-slate-100"
+                  >
+                    <td class="py-1 pr-2">{{ s.seq + 1 }}</td>
+                    <td class="py-1 pr-2">{{ s.ordno }}</td>
+                    <td class="py-1 pr-2">{{ s.destination || '—' }}</td>
+                    <td class="py-1">{{ clockFromMin(s.eta_min) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p v-else class="mt-2 text-sm text-slate-500">No stops on this truck at this point.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="historyDialogOpen = false">Close</el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog
       v-model="vizOpen"

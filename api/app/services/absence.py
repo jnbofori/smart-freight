@@ -8,6 +8,7 @@ from app.enums import DriverStatus, OrderStatus, TruckStatus
 from app.models import Driver, Order, Truck
 from app.schemas import DriverAbsenceResponse
 from app.services.optimizer import optimize_assignments
+from app.services.llm_summarize import summarize_optimize_result
 from app.services.plan_persist import persist_optimize_result
 from app.services.travel import utc_now_naive_fallback
 
@@ -80,10 +81,24 @@ def report_driver_absence(
     trucks = db.query(Truck).all()
     drivers = db.query(Driver).all()
     day = utc_now_naive_fallback()
-    plan = optimize_assignments(trucks, unassigned, drivers, day)
+    plan = summarize_optimize_result(
+        optimize_assignments(trucks, unassigned, drivers, day)
+    )
 
     if persist:
-        persist_optimize_result(db, plan, trucks, drivers, unassigned, commit=True)
+        persist_optimize_result(
+            db,
+            plan,
+            trucks,
+            drivers,
+            unassigned,
+            commit=True,
+            event_type="absence",
+            history_note=(
+                f"Driver {driver.name} ({driver.code}) absent; "
+                f"freed {orders_freed} order(s)"
+            ),
+        )
 
     assigned_count = plan.summary.get("orders_assigned", 0)
     reason = (

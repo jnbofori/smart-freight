@@ -18,15 +18,20 @@ from app.schemas import (
     DriverAbsenceResponse,
     OptimizeRequest,
     OptimizeResponse,
+    RouteHistoryEntryOut,
+    RouteHistoryListResponse,
+    RouteHistorySnapshot,
     SimulateResponse,
 )
 from app.services.absence import report_driver_absence
 from app.services.breakdown import approve_breakdown, report_breakdown
 from app.services.cancel import cancel_order
 from app.services.dispatch import dispatch_order
+from app.services.llm_summarize import summarize_optimize_result
 from app.services.optimizer import optimize_assignments
 from app.services.plan import load_persisted_plan
-from app.services.plan_persist import persist_optimize_result
+from app.services.plan_history import list_route_history, parse_route_snapshot
+from app.services.plan_persist import clear_plan_summaries, persist_optimize_result
 from app.services.simulate import simulate_midday
 from app.services.travel import utc_now_naive_fallback
 
@@ -40,6 +45,44 @@ def get_optimize_plan(
 ) -> OptimizeResponse:
     """Return the persisted plan reconstructed from assigned orders (empty if none)."""
     return load_persisted_plan(db)
+
+
+@router.get("/history", response_model=RouteHistoryListResponse)
+def get_route_history(
+    truck_id: int | None = None,
+    unit_number: str | None = None,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> RouteHistoryListResponse:
+    """Return route change history for one truck (newest first)."""
+    if truck_id is None and not (unit_number or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provide truck_id or unit_number",
+        )
+    rows = list_route_history(db, truck_id=truck_id, unit_number=unit_number)
+    entries: list[RouteHistoryEntryOut] = []
+    for row in rows:
+        entries.append(
+            RouteHistoryEntryOut(
+                id=row.id,
+                created_at=row.created_at,
+                event_type=row.event_type,
+                note=row.note or "",
+                truck_id=row.truck_id,
+                unit_number=row.unit_number,
+                snapshot=RouteHistorySnapshot.model_validate(parse_route_snapshot(row)),
+            )
+        )
+    resolved_unit = unit_number or (entries[0].unit_number if entries else "")
+    resolved_truck = truck_id if truck_id is not None else (
+        entries[0].truck_id if entries else None
+    )
+    return RouteHistoryListResponse(
+        truck_id=resolved_truck,
+        unit_number=resolved_unit or "",
+        entries=entries,
+    )
 
 
 @router.post("", response_model=OptimizeResponse)
@@ -57,6 +100,7 @@ def run_optimize(
     )
     planning_date = payload.planning_date or utc_now_naive_fallback()
     result = optimize_assignments(trucks, orders, drivers, planning_date)
+    result = summarize_optimize_result(result)
 
     if payload.persist:
         persist_optimize_result(db, result, trucks, drivers, orders)
@@ -241,4 +285,5 @@ def reset_assignments(
     for driver in drivers:
         driver.status = DriverStatus.AVAILABLE.value
 
+    clear_plan_summaries(db)
     db.commit()

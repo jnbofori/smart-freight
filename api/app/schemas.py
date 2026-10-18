@@ -338,6 +338,7 @@ class TruckAssignment(BaseModel):
     destinations: list[str]
     usage: CapacityUsage
     rationales: list[str]
+    reasoning_summary: str = ""
     placements: list[LoadPlacement] = []
     max_skid_spots: float = 0
     max_linear_feet: float = 0
@@ -358,6 +359,42 @@ class OptimizeResponse(BaseModel):
     planning_date: date
     routing_mode: str = "static"  # static | live
     weather_summary: str = ""
+    unassigned_summary: str = ""
+
+
+class RouteHistoryStop(BaseModel):
+    seq: int = 0
+    ordno: str = ""
+    destination: str = ""
+    eta_min: float = 0
+
+
+class RouteHistorySnapshot(BaseModel):
+    truck_id: int = 0
+    unit_number: str = ""
+    driver_name: str = ""
+    driver_code: str = ""
+    order_ordnos: list[str] = []
+    destinations: list[str] = []
+    corridor: str = ""
+    reasoning_summary: str = ""
+    stops: list[RouteHistoryStop] = []
+
+
+class RouteHistoryEntryOut(BaseModel):
+    id: int
+    created_at: datetime
+    event_type: str
+    note: str = ""
+    truck_id: int
+    unit_number: str
+    snapshot: RouteHistorySnapshot
+
+
+class RouteHistoryListResponse(BaseModel):
+    truck_id: Optional[int] = None
+    unit_number: str = ""
+    entries: list[RouteHistoryEntryOut]
 
 
 class SimulatedTruck(BaseModel):
