@@ -5,6 +5,7 @@ __pycache__/
 .pytest_cache/
 *.db
 .env
+api/.env
 
 # Local copy of Vite dist for same-origin smoke tests (Docker uses /app/static)
 api/static/
